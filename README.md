@@ -21,11 +21,10 @@ implementation, the low-level API part can be used as a fallback.
 
 Licensed under [GNU Affero General Public License v3.0](LICENSE-AGPL-3.0).
 
-**@ovh**: if you want to reclaim this project (and its associated `crates.io`
-namespace) in order to:
+**@ovh**: if you want to:
 
-* relicense it to a less strict license; *and/or*
+* relicense this crate to a less strict license; *and/or*
 * reclaim the `crates.io/crates/ovh` namespace; *and/or*
-* become the maintainer of the crate
+* become the maintainer of this crate
 
 Then please contact me.
