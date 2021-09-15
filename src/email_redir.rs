@@ -1,3 +1,5 @@
+//! High-level access to the email redirection API.
+
 use core::fmt;
 use std::fmt::Display;
 
@@ -6,14 +8,19 @@ use reqwest::Response;
 
 use serde::{Deserialize, Serialize};
 
+/// Structure representing a single email redirection.
 #[derive(Debug, Deserialize)]
 pub struct OvhMailRedir {
-    id: String,
-    from: String,
-    to: String,
+    /// Unique identifier of the redirection
+    pub id: String,
+    /// Email address to redirect from
+    pub from: String,
+    /// Email address to redirect to
+    pub to: String,
 }
 
 impl OvhMailRedir {
+    /// Retrieves an email redirection entry.
     async fn get_redir(
         client: &OvhClient,
         domain: &str,
@@ -27,6 +34,27 @@ impl OvhMailRedir {
         Ok(res)
     }
 
+    /// Lists all of the email redirections
+    ///
+    /// This method will perform one extra API call per redirection
+    /// in order to get their details.
+    ///
+    /// ```no_run
+    /// use ovh::client::OvhClient;
+    /// use ovh::email_redir::OvhMailRedir;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     let redirs = OvhMailRedir::list(&c, "example.com")
+    ///         .await
+    ///         .unwrap();
+    ///
+    ///     for r in redirs {
+    ///        println!("{}", r);
+    ///     }
+    /// }
+    /// ```
     pub async fn list(
         client: &OvhClient,
         domain: &str,
@@ -46,6 +74,20 @@ impl OvhMailRedir {
         Ok(res)
     }
 
+    /// Creates a new redirection.
+    ///
+    /// ```no_run
+    /// use ovh::client::OvhClient;
+    /// use ovh::email_redir::OvhMailRedir;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     OvhMailRedir::create(&c, "example.com", "foo@example.com", "admin@example.com", false)
+    ///         .await
+    ///         .unwrap();
+    /// }
+    /// ```
     pub async fn create(
         c: &OvhClient,
         domain: &str,
@@ -62,6 +104,20 @@ impl OvhMailRedir {
             .await
     }
 
+    /// Deletes an existing redirection.
+    ///
+    /// ```no_run
+    /// use ovh::client::OvhClient;
+    /// use ovh::email_redir::OvhMailRedir;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     OvhMailRedir::delete(&c, "example.com", "1234567")
+    ///         .await
+    ///         .unwrap();
+    /// }
+    /// ```
     pub async fn delete(
         c: &OvhClient,
         domain: &str,

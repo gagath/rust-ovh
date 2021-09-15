@@ -1,7 +1,13 @@
+//! Low-level access to the OVH API.
+
 use configparser::ini::Ini;
 use reqwest::{header::HeaderMap, Response};
 use serde::Serialize;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    convert::TryInto,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 // Private data
 
@@ -45,18 +51,33 @@ pub struct OvhClient {
 }
 
 impl OvhClient {
+    /// Creates a new client from scratch.
+    ///
+    /// ```
+    /// use ovh::client::OvhClient;
+    ///
+    /// let app_key = "my_app_key";
+    /// let app_secret = "my_app_secret";
+    /// let consumer_key = "my_consumer_key";
+    ///
+    /// let client = OvhClient::new("ovh-eu", app_key, app_secret, consumer_key);
+    /// assert!(client.is_some());
+    ///
+    /// let client = OvhClient::new("wrong-endpoint", app_key, app_secret, consumer_key);
+    /// assert!(client.is_none());
+    /// ```
     pub fn new(
         endpoint: &str,
         application_key: &str,
         application_secret: &str,
         consumer_key: &str,
     ) -> Option<OvhClient> {
-        let client = reqwest::Client::new();
-
         let endpoint = ENDPOINTS.get(endpoint)?;
         let application_key = application_key.into();
         let application_secret = application_secret.into();
         let consumer_key = consumer_key.into();
+
+        let client = reqwest::Client::new();
 
         Some(OvhClient {
             endpoint,
@@ -67,7 +88,29 @@ impl OvhClient {
         })
     }
 
-    pub fn from_conf(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Creates a new client from a configuration file.
+    ///
+    /// The configuration file format is usually named `ovh.conf` and
+    /// is the same format as the one used in the
+    /// [python-ovh](https://github.com/ovh/python-ovh) library:
+    ///
+    /// ```ini
+    /// [default]
+    /// ; general configuration: default endpoint
+    /// endpoint=ovh-eu
+    ///
+    /// [ovh-eu]
+    /// ; configuration specific to 'ovh-eu' endpoint
+    /// application_key=my_app_key
+    /// application_secret=my_application_secret
+    /// ; uncomment following line when writing a script application
+    /// ; with a single consumer key.
+    /// ;consumer_key=my_consumer_key
+    /// ```
+    pub fn from_conf<T>(path: T) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        T: AsRef<Path>,
+    {
         let mut conf = Ini::new();
         conf.load(path)?;
 
@@ -112,9 +155,15 @@ impl OvhClient {
         format!("{}{}", &self.endpoint, path)
     }
 
-    pub async fn time_delta(&self) -> Result<u64, Box<dyn std::error::Error>> {
+    /// Retrieves the time delta between the local machine and the API server.
+    ///
+    /// This method will perform a request to the API server to get its
+    /// local time, and then subtract it from the local time of the machine.
+    /// The result is a time delta value, is seconds.
+    pub async fn time_delta(&self) -> Result<i64, Box<dyn std::error::Error>> {
         let server_time: u64 = self.get_noauth("/auth/time").await?.text().await?.parse()?;
-        Ok(now() - server_time)
+        let delta = (now() - server_time).try_into()?;
+        Ok(delta)
     }
 
     fn default_headers(&self) -> reqwest::header::HeaderMap {
@@ -135,7 +184,8 @@ impl OvhClient {
         let mut headers = self.default_headers();
 
         let time_delta = self.time_delta().await?;
-        let timestamp = now() + time_delta;
+        let now: i64 = now().try_into()?;
+        let timestamp = now + time_delta;
         let timestamp = timestamp.to_string();
 
         let signature = self.signature(url, &timestamp, method, body);
@@ -147,6 +197,7 @@ impl OvhClient {
         Ok(headers)
     }
 
+    /// Performs a GET request.
     pub async fn get(&self, path: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "GET", "").await?;
@@ -155,6 +206,7 @@ impl OvhClient {
         Ok(resp)
     }
 
+    /// Performs a DELETE request.
     pub async fn delete(
         &self,
         path: &str,
@@ -166,6 +218,7 @@ impl OvhClient {
         Ok(resp)
     }
 
+    /// Performs a POST request.
     pub async fn post<T: Serialize + ?Sized>(
         &self,
         path: &str,
@@ -188,6 +241,7 @@ impl OvhClient {
         Ok(resp)
     }
 
+    /// Performs a GET request without auth.
     pub async fn get_noauth(
         &self,
         path: &str,
