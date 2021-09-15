@@ -1,6 +1,6 @@
 # rust-ovh
 
-[![Build](https://github.com/MicroJoe/rust-ovh/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MicroJoe/rust-ovh/actions/workflows/ci.yml)
+[![Build](https://github.com/MicroJoe/rust-ovh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MicroJoe/rust-ovh/actions/workflows/ci.yml)
 [![Latest version](https://img.shields.io/crates/v/ovh.svg)](https://crates.io/crates/ovh)
 [![Documentation](https://docs.rs/ovh/badge.svg)](https://docs.rs/ovh)
 [![License](https://img.shields.io/crates/l/ovh.svg)](https://crates.io/crates/ovh)
