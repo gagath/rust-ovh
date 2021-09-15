@@ -27,7 +27,7 @@ impl OvhMailRedir {
         Ok(res)
     }
 
-    pub async fn list_redirs(
+    pub async fn list(
         client: &OvhClient,
         domain: &str,
     ) -> Result<Vec<OvhMailRedir>, Box<dyn std::error::Error>> {

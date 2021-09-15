@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match opts.subcmd {
         SubCommand::List(a) => {
-            let resp = OvhMailRedir::list_redirs(&c, &a.domain).await?;
+            let resp = OvhMailRedir::list(&c, &a.domain).await?;
             for redir in resp {
                 println!("{}", redir);
             }
