@@ -32,21 +32,59 @@ pub enum DnsRecordType {
 
 /// Structure representing a single DNS record.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct OvhDnsRecord {
     /// The internal name of the zone
+    ///
+    /// example: `example.com`
     pub zone: String,
-    /// Resource record Name
-    pub field_type: DnsRecordType,
+
+    /// Resource record name
+    ///
+    /// example: `A`
+    #[serde(rename = "fieldType")]
+    pub record_type: DnsRecordType,
+
     /// Resource record subdomain
-    pub sub_domain: Option<String>,
+    ///
+    /// example: `www`
+    #[serde(rename = "subDomain")]
+    pub subdomain: Option<String>,
+
     /// Resource record target
+    ///
+    /// example: `93.184.216.34`
     pub target: String,
-    /// Resource record ttl (positive 32 bit signed integer, see: https://www.rfc-editor.org/rfc/rfc2181#section-8)
+
+    /// Resource record TTL (positive 32 bit signed integer, see: https://www.rfc-editor.org/rfc/rfc2181#section-8)
+    ///
+    /// example: 86400
     pub ttl: Option<i32>,
 }
 
 impl OvhDnsRecord {
+    /// Retrieves the fully qualified domain name (subdomain + zone)
+    ///
+    /// example
+    /// ```
+    /// use ovh::dns_record::{DnsRecordType, OvhDnsRecord};
+    ///
+    /// let record = OvhDnsRecord {
+    ///     zone: String::from("example.com"),
+    ///     record_type: DnsRecordType::A,
+    ///     subdomain: Some(String::from("www")),
+    ///     target: String::from("93.184.216.34"),
+    ///     ttl: Some(86400),
+    /// };
+    ///
+    /// assert_eq!(record.fqn(), "www.example.com.");
+    /// ```
+    pub fn fqn(&self) -> String {
+        match &self.subdomain {
+            Some(subdomain) => format!("{}.{}.", subdomain, self.zone),
+            None => format!("{}.", self.zone),
+        }
+    }
+
     /// Retrieves a DNS record
     async fn get_record(
         client: &OvhClient,
@@ -59,9 +97,9 @@ impl OvhDnsRecord {
             .json()
             .await?;
 
-        // normalize sub_domain
-        record.sub_domain = match record.sub_domain {
-            Some(sub_domain) if sub_domain.is_empty() => None,
+        // normalize subdomain
+        record.subdomain = match record.subdomain {
+            Some(subdomain) if subdomain.is_empty() => None,
             x => x,
         };
 
@@ -91,15 +129,60 @@ impl OvhDnsRecord {
     /// ```
     pub async fn list(
         client: &OvhClient,
-        zone_name: &str,
+        zone: &str,
     ) -> Result<Vec<OvhDnsRecord>, Box<dyn std::error::Error>> {
+        Self::list_filtered(client, zone, None, None).await
+    }
+
+    /// Lists all DNS records having the provided type (is set) and subdomain (if set)
+    ///
+    /// This method will perform one extra API call per record
+    /// in order to get their details.
+    ///
+    /// ```no_run
+    /// use ovh::client::OvhClient;
+    /// use ovh::dns_record::OvhDnsRecord;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     use ovh::dns_record::DnsRecordType;
+    /// let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     let records = OvhDnsRecord::list_filtered(&c, "example.com", Some(DnsRecordType::CNAME), Some(String::from("foo")))
+    ///         .await
+    ///         .unwrap();
+    ///
+    ///     for r in records {
+    ///         println!("{}", r);
+    ///     }
+    /// }
+    /// ```
+    pub async fn list_filtered(
+        client: &OvhClient,
+        zone: &str,
+        record_type: Option<DnsRecordType>,
+        subdomain: Option<String>,
+    ) -> Result<Vec<OvhDnsRecord>, Box<dyn std::error::Error>> {
+        let mut options = Vec::with_capacity(2);
+        if let Some(record_type) = record_type {
+            options.push(format!("fieldType={:?}", record_type))
+        }
+        if let Some(subdomain) = subdomain {
+            options.push(format!("subDomain={}", subdomain))
+        }
+
+        let url = if options.is_empty() {
+            format!("/domain/zone/{}/record", zone)
+        } else {
+            format!("/domain/zone/{}/record?{}", zone, options.join("&"))
+        };
+
         let records = client
-            .get(&format!("/domain/zone/{}/record", zone_name))
+            .get(&url)
             .await?
             .error_for_status()?
             .json::<Vec<u64>>().await?
             .into_iter()
-            .map(|id| Self::get_record(client, zone_name, id));
+            .map(|id| Self::get_record(client, zone, id));
 
         future::join_all(records)
             .await
@@ -110,10 +193,6 @@ impl OvhDnsRecord {
 
 impl Display for OvhDnsRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let domain = match &self.sub_domain {
-            Some(sub_domain) => format!("{}.{}.", sub_domain, self.zone),
-            None => format!("{}.", self.zone),
-        };
-        write!(f, "{} {} {:?} {}", domain, self.ttl.unwrap_or(0), self.field_type, self.target)
+        write!(f, "{} {} {:?} {}", self.fqn(), self.ttl.unwrap_or(0), self.record_type, self.target)
     }
 }
