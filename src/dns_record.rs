@@ -8,6 +8,7 @@ use reqwest::Response;
 use serde::{Deserialize, Serialize};
 
 use crate::client::OvhClient;
+use crate::client::Result;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DnsRecordType {
@@ -86,11 +87,7 @@ impl OvhDnsRecord {
     }
 
     /// Retrieves a DNS record
-    async fn get_record(
-        client: &OvhClient,
-        zone_name: &str,
-        id: u64,
-    ) -> Result<OvhDnsRecord, Box<dyn std::error::Error>> {
+    async fn get_record(client: &OvhClient, zone_name: &str, id: u64) -> Result<OvhDnsRecord> {
         let mut record: OvhDnsRecord = client
             .get(&format!("/domain/zone/{}/record/{}", zone_name, id))
             .await?
@@ -127,10 +124,7 @@ impl OvhDnsRecord {
     ///     }
     /// }
     /// ```
-    pub async fn list(
-        client: &OvhClient,
-        zone: &str,
-    ) -> Result<Vec<OvhDnsRecord>, Box<dyn std::error::Error>> {
+    pub async fn list(client: &OvhClient, zone: &str) -> Result<Vec<OvhDnsRecord>> {
         Self::list_filtered(client, zone, None, None).await
     }
 
@@ -156,12 +150,7 @@ impl OvhDnsRecord {
     ///     }
     /// }
     /// ```
-    pub async fn list_filtered(
-        client: &OvhClient,
-        zone: &str,
-        record_type: Option<DnsRecordType>,
-        subdomain: Option<String>,
-    ) -> Result<Vec<OvhDnsRecord>, Box<dyn std::error::Error>> {
+    pub async fn list_filtered(client: &OvhClient, zone: &str, record_type: Option<DnsRecordType>, subdomain: Option<String>) -> Result<Vec<OvhDnsRecord>> {
         let mut options = Vec::with_capacity(2);
         if let Some(record_type) = record_type {
             options.push(format!("fieldType={:?}", record_type))

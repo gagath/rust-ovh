@@ -3,11 +3,7 @@
 use configparser::ini::Ini;
 use reqwest::{header::HeaderMap, Response};
 use serde::Serialize;
-use std::{
-    convert::TryInto,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{convert::TryInto, path::Path, result, time::{SystemTime, UNIX_EPOCH}};
 
 // Private data
 
@@ -41,6 +37,8 @@ fn now() -> u64 {
 }
 
 // Public API
+
+pub type Result<T> = result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct OvhClient {
     endpoint: &'static str,
@@ -107,7 +105,7 @@ impl OvhClient {
     /// ; with a single consumer key.
     /// ;consumer_key=my_consumer_key
     /// ```
-    pub fn from_conf<T>(path: T) -> Result<Self, Box<dyn std::error::Error>>
+    pub fn from_conf<T>(path: T) -> Result<Self>
     where
         T: AsRef<Path>,
     {
@@ -160,7 +158,7 @@ impl OvhClient {
     /// This method will perform a request to the API server to get its
     /// local time, and then subtract it from the local time of the machine.
     /// The result is a time delta value, is seconds.
-    pub async fn time_delta(&self) -> Result<i64, Box<dyn std::error::Error>> {
+    pub async fn time_delta(&self) -> Result<i64> {
         let server_time: u64 = self.get_noauth("/auth/time").await?.text().await?.parse()?;
         let delta = (now() - server_time).try_into()?;
         Ok(delta)
@@ -175,12 +173,7 @@ impl OvhClient {
         headers
     }
 
-    async fn gen_headers(
-        &self,
-        url: &str,
-        method: &str,
-        body: &str,
-    ) -> Result<HeaderMap, Box<dyn std::error::Error>> {
+    async fn gen_headers(&self, url: &str, method: &str, body: &str) -> Result<HeaderMap> {
         let mut headers = self.default_headers();
 
         let time_delta = self.time_delta().await?;
@@ -198,7 +191,7 @@ impl OvhClient {
     }
 
     /// Performs a GET request.
-    pub async fn get(&self, path: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    pub async fn get(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "GET", "").await?;
 
@@ -210,7 +203,7 @@ impl OvhClient {
     pub async fn delete(
         &self,
         path: &str,
-    ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    ) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "DELETE", "").await?;
 
@@ -219,11 +212,7 @@ impl OvhClient {
     }
 
     /// Performs a POST request.
-    pub async fn post<T: Serialize + ?Sized>(
-        &self,
-        path: &str,
-        data: &T,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    pub async fn post<T: Serialize + ?Sized>(&self, path: &str, data: &T) -> Result<Response> {
         let url = self.url(path);
 
         // Cannot call RequestBuilder.json directly because of body
@@ -242,10 +231,7 @@ impl OvhClient {
     }
 
     /// Performs a GET request without auth.
-    pub async fn get_noauth(
-        &self,
-        path: &str,
-    ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    pub async fn get_noauth(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.default_headers();
 
