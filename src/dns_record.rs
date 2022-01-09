@@ -1,11 +1,9 @@
 //! High-level access to the DNS records API.
 
 use core::fmt;
-use std::collections::HashMap;
 use std::fmt::Display;
 
 use futures::future;
-use reqwest::Response;
 use serde::{Deserialize, Serialize};
 
 use crate::client::OvhClient;
