@@ -1,6 +1,7 @@
 //! High-level access to the DNS records API.
 
 use core::fmt;
+use std::collections::HashMap;
 use std::fmt::Display;
 
 use futures::future;
@@ -87,7 +88,7 @@ impl OvhDnsRecord {
     }
 
     /// Retrieves a DNS record
-    async fn get_record(client: &OvhClient, zone_name: &str, id: u64) -> Result<OvhDnsRecord> {
+    async fn get_record(client: &OvhClient, zone_name: &str, id: &u64) -> Result<OvhDnsRecord> {
         let mut record: OvhDnsRecord = client
             .get(&format!("/domain/zone/{}/record/{}", zone_name, id))
             .await?
@@ -119,12 +120,12 @@ impl OvhDnsRecord {
     ///         .await
     ///         .unwrap();
     ///
-    ///     for r in records {
-    ///         println!("{}", r);
-    ///     }
+    ///     for (id, record) in records {
+    ///         println!("{}: {}", id, record);
+    ///	    }
     /// }
     /// ```
-    pub async fn list(client: &OvhClient, zone: &str) -> Result<Vec<OvhDnsRecord>> {
+    pub async fn list(client: &OvhClient, zone: &str) -> Result<HashMap<u64, OvhDnsRecord>> {
         Self::list_filtered(client, zone, None, None).await
     }
 
@@ -135,22 +136,22 @@ impl OvhDnsRecord {
     ///
     /// ```no_run
     /// use ovh::client::OvhClient;
+    /// use ovh::dns_record::DnsRecordType;
     /// use ovh::dns_record::OvhDnsRecord;
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     use ovh::dns_record::DnsRecordType;
-    /// let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     let c = OvhClient::from_conf("ovh.conf").unwrap();
     ///     let records = OvhDnsRecord::list_filtered(&c, "example.com", Some(DnsRecordType::CNAME), Some(String::from("foo")))
     ///         .await
     ///         .unwrap();
     ///
-    ///     for r in records {
-    ///         println!("{}", r);
-    ///     }
+    ///     for (id, record) in records {
+    ///         println!("{}: {}", id, record);
+    ///	    }
     /// }
     /// ```
-    pub async fn list_filtered(client: &OvhClient, zone: &str, record_type: Option<DnsRecordType>, subdomain: Option<String>) -> Result<Vec<OvhDnsRecord>> {
+    pub async fn list_filtered(client: &OvhClient, zone: &str, record_type: Option<DnsRecordType>, subdomain: Option<String>) -> Result<HashMap<u64, OvhDnsRecord>> {
         let mut options = Vec::with_capacity(2);
         if let Some(record_type) = record_type {
             options.push(format!("fieldType={:?}", record_type))
@@ -165,18 +166,22 @@ impl OvhDnsRecord {
             format!("/domain/zone/{}/record?{}", zone, options.join("&"))
         };
 
-        let records = client
+        let ids = client
             .get(&url)
             .await?
             .error_for_status()?
-            .json::<Vec<u64>>().await?
-            .into_iter()
+            .json::<Vec<u64>>().await?;
+
+        let records = ids
+            .iter()
             .map(|id| Self::get_record(client, zone, id));
 
-        future::join_all(records)
+        let records = future::join_all(records)
             .await
             .into_iter()
-            .collect()
+            .collect::<Result<Vec<OvhDnsRecord>>>()?;
+
+        Ok(ids.into_iter().zip(records.into_iter()).collect())
     }
 }
 
