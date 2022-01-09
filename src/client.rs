@@ -159,9 +159,12 @@ impl OvhClient {
     /// local time, and then subtract it from the local time of the machine.
     /// The result is a time delta value, is seconds.
     pub async fn time_delta(&self) -> Result<i64> {
+        Ok(0)
+        /* FIXME What is the point of that? (see https://github.com/MicroJoe/rust-ovh/issues/1)
         let server_time: u64 = self.get_noauth("/auth/time").await?.text().await?.parse()?;
         let delta = (now() - server_time).try_into()?;
         Ok(delta)
+        */
     }
 
     fn default_headers(&self) -> reqwest::header::HeaderMap {
@@ -175,6 +178,13 @@ impl OvhClient {
 
     async fn gen_headers(&self, url: &str, method: &str, body: &str) -> Result<HeaderMap> {
         let mut headers = self.default_headers();
+
+        if !body.is_empty() {
+            headers.insert(
+                "Content-Type",
+                reqwest::header::HeaderValue::from_str("application/json; charset=utf-8").unwrap(),
+            );
+        }
 
         let time_delta = self.time_delta().await?;
         let now: i64 = now().try_into()?;
@@ -213,11 +223,19 @@ impl OvhClient {
 
     /// Performs a POST request.
     pub async fn post<T: Serialize + ?Sized>(&self, path: &str, data: &T) -> Result<Response> {
-        let url = self.url(path);
-
         // Cannot call RequestBuilder.json directly because of body
         // signature requirement.
         let body = serde_json::to_string(data)?;
+        self.post_raw(path, body).await
+    }
+
+    /// Performs a POST request with an empty body.
+    pub async fn post_empty(&self, path: &str) -> Result<Response> {
+        self.post_raw(path, String::from("")).await
+    }
+
+    async fn post_raw(&self, path: &str, body: String) -> Result<Response> {
+        let url = self.url(path);
         let headers = self.gen_headers(&url, "POST", &body).await?;
 
         let resp = self
@@ -227,6 +245,7 @@ impl OvhClient {
             .body(body)
             .send()
             .await?;
+
         Ok(resp)
     }
 
