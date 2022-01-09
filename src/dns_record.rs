@@ -37,7 +37,7 @@ pub enum DnsRecordType {
 pub struct OvhDnsRecord {
     /// Unique identifier of the DNS record
     ///
-    /// example: `123456789`
+    /// example: `1234567`
     pub id: u64,
 
     /// The internal name of the zone
@@ -79,19 +79,19 @@ struct OvhDnsRecordCreate<'a> {
 }
 
 impl OvhDnsRecord {
-    /// Retrieves the fully qualified domain name (subdomain + zone)
+    /// Retrieves the fully qualified domain name (subdomain + zone).
     ///
     /// example
     /// ```
     /// use ovh::dns_record::{DnsRecordType, OvhDnsRecord};
     ///
     /// let record = OvhDnsRecord {
-    ///     id: 123456789,
-    ///     zone: String::from("example.com"),
-    ///     record_type: DnsRecordType::A,
+    ///     id: 1234567,
     ///     subdomain: Some(String::from("www")),
-    ///     target: String::from("93.184.216.34"),
+    ///     zone: String::from("example.com"),
     ///     ttl: Some(86400),
+    ///     record_type: DnsRecordType::A,
+    ///     target: String::from("93.184.216.34"),
     /// };
     ///
     /// assert_eq!(record.fqn(), "www.example.com.");
@@ -115,7 +115,7 @@ impl OvhDnsRecord {
         self
     }
 
-    /// Retrieves a DNS record
+    /// Retrieves a DNS record.
     async fn get_record(client: &OvhClient, zone_name: &str, id: &u64) -> Result<OvhDnsRecord> {
         let record = client
             .get(&format!("/domain/zone/{}/record/{}", zone_name, id))
@@ -128,7 +128,7 @@ impl OvhDnsRecord {
         Ok(record)
     }
 
-    /// Lists all DNS records
+    /// Lists all DNS records.
     ///
     /// This method will perform one extra API call per record
     /// in order to get their details.
@@ -153,7 +153,7 @@ impl OvhDnsRecord {
         Self::list_filtered(client, zone, None, None).await
     }
 
-    /// Lists all DNS records having the provided type (is set) and subdomain (if set)
+    /// Lists all DNS records having the provided type (is set) and subdomain (if set).
     ///
     /// This method will perform one extra API call per record
     /// in order to get their details.
@@ -230,11 +230,38 @@ impl OvhDnsRecord {
             .await?
             .normalize();
 
+        Self::refresh_zone(c, zone).await?;
+        Ok(record)
+    }
+
+    /// Deletes an existing DNS record.
+    ///
+    /// ```no_run
+    /// use ovh::client::OvhClient;
+    /// use ovh::dns_record::OvhDnsRecord;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let c = OvhClient::from_conf("ovh.conf").unwrap();
+    ///     OvhDnsRecord::delete(&c, "example.com", 1234567)
+    ///         .await
+    ///         .unwrap();
+    /// }
+    /// ```
+    pub async fn delete(c: &OvhClient, zone: &str, id: u64) -> Result<()> {
+        c.delete(&format!("/domain/zone/{}/record/{}", zone, id))
+            .await?
+            .error_for_status()?;
+
+        Self::refresh_zone(c, zone).await
+    }
+
+    async fn refresh_zone(c: &OvhClient, zone: &str) -> Result<()> {
         c.post_empty(&format!("/domain/zone/{}/refresh", zone))
             .await?
             .error_for_status()?;
 
-        Ok(record)
+        Ok(())
     }
 }
 
