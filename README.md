@@ -7,6 +7,8 @@
 
 Async client for the OVH API.
 
+[Creating tokens for accessing the OVH API](https://api.ovh.com/createToken/index.cgi?GET=/*&PUT=/*&POST=/*&DELETE=/*)
+
 ## High-level usage
 
 Some parts of the API are implemented using typed Rust structs
