@@ -3,11 +3,7 @@
 use configparser::ini::Ini;
 use reqwest::{header::HeaderMap, Response};
 use serde::Serialize;
-use std::{
-    convert::TryInto,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{convert::TryInto, path::Path, result, time::{SystemTime, UNIX_EPOCH}};
 
 // Private data
 
@@ -42,50 +38,58 @@ fn now() -> u64 {
 
 // Public API
 
+pub type Result<T> = result::Result<T, Box<dyn std::error::Error>>;
+
 pub struct OvhClient {
     endpoint: &'static str,
     application_key: String,
     application_secret: String,
     consumer_key: String,
     client: reqwest::Client,
+    time_delta: i64,
 }
 
 impl OvhClient {
     /// Creates a new client from scratch.
     ///
-    /// ```
+    /// This function will perform an API call to get the server time.
+    ///
+    /// ```no_run
     /// use ovh::client::OvhClient;
     ///
     /// let app_key = "my_app_key";
     /// let app_secret = "my_app_secret";
     /// let consumer_key = "my_consumer_key";
     ///
-    /// let client = OvhClient::new("ovh-eu", app_key, app_secret, consumer_key);
-    /// assert!(client.is_some());
-    ///
-    /// let client = OvhClient::new("wrong-endpoint", app_key, app_secret, consumer_key);
-    /// assert!(client.is_none());
+    /// let client = OvhClient::new("ovh-eu", app_key, app_secret, consumer_key).await.unwrap();
     /// ```
-    pub fn new(
+    pub async fn new(
         endpoint: &str,
         application_key: &str,
         application_secret: &str,
         consumer_key: &str,
-    ) -> Option<OvhClient> {
-        let endpoint = ENDPOINTS.get(endpoint)?;
+    ) -> Result<OvhClient> {
+        let endpoint = ENDPOINTS.get(endpoint).ok_or("unknown endpoint")?;
         let application_key = application_key.into();
         let application_secret = application_secret.into();
         let consumer_key = consumer_key.into();
 
         let client = reqwest::Client::new();
 
-        Some(OvhClient {
+        let mut ovh_client = OvhClient {
             endpoint,
             application_key,
             application_secret,
             consumer_key,
             client,
-        })
+            time_delta: 0,
+        };
+
+        let server_time: i64 = ovh_client.get_noauth("/auth/time").await?.text().await?.parse()?;
+        let now: i64 = now().try_into()?;
+        ovh_client.time_delta = now - server_time;
+
+        Ok(ovh_client)
     }
 
     /// Creates a new client from a configuration file.
@@ -107,7 +111,9 @@ impl OvhClient {
     /// ; with a single consumer key.
     /// ;consumer_key=my_consumer_key
     /// ```
-    pub fn from_conf<T>(path: T) -> Result<Self, Box<dyn std::error::Error>>
+    ///
+    /// This function will perform an API call to get the server time.
+    pub async fn from_conf<T>(path: T) -> Result<Self>
     where
         T: AsRef<Path>,
     {
@@ -127,15 +133,12 @@ impl OvhClient {
             .get(&endpoint, "consumer_key")
             .ok_or("missing key `consumer_key`")?;
 
-        let c = Self::new(
+        Self::new(
             &endpoint,
             &application_key,
             &application_secret,
             &consumer_key,
-        )
-        .ok_or("failed to create client")?;
-
-        Ok(c)
+        ).await
     }
 
     fn signature(&self, url: &str, timestamp: &str, method: &str, body: &str) -> String {
@@ -155,15 +158,15 @@ impl OvhClient {
         format!("{}{}", &self.endpoint, path)
     }
 
-    /// Retrieves the time delta between the local machine and the API server.
+    /// Retrieves the time delta in seconds between the local machine and the API server
+    /// (machine_unix_epoch - server_unix_epoch).
     ///
-    /// This method will perform a request to the API server to get its
-    /// local time, and then subtract it from the local time of the machine.
-    /// The result is a time delta value, is seconds.
-    pub async fn time_delta(&self) -> Result<i64, Box<dyn std::error::Error>> {
-        let server_time: u64 = self.get_noauth("/auth/time").await?.text().await?.parse()?;
-        let delta = (now() - server_time).try_into()?;
-        Ok(delta)
+    /// The delta was determined by performing a request to the API server to get its
+    /// time, and then subtract it from the local machine time.
+    /// The result is a time delta value, is seconds, that shouldn't be far from 0 if the local
+    /// clock is correctly synchronized.
+    pub fn time_delta(&self) -> i64 {
+        self.time_delta
     }
 
     fn default_headers(&self) -> reqwest::header::HeaderMap {
@@ -175,17 +178,18 @@ impl OvhClient {
         headers
     }
 
-    async fn gen_headers(
-        &self,
-        url: &str,
-        method: &str,
-        body: &str,
-    ) -> Result<HeaderMap, Box<dyn std::error::Error>> {
+    async fn gen_headers(&self, url: &str, method: &str, body: &str) -> Result<HeaderMap> {
         let mut headers = self.default_headers();
 
-        let time_delta = self.time_delta().await?;
+        if !body.is_empty() {
+            headers.insert(
+                "Content-Type",
+                reqwest::header::HeaderValue::from_str("application/json; charset=utf-8").unwrap(),
+            );
+        }
+
         let now: i64 = now().try_into()?;
-        let timestamp = now + time_delta;
+        let timestamp = now + self.time_delta;
         let timestamp = timestamp.to_string();
 
         let signature = self.signature(url, &timestamp, method, body);
@@ -198,7 +202,7 @@ impl OvhClient {
     }
 
     /// Performs a GET request.
-    pub async fn get(&self, path: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    pub async fn get(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "GET", "").await?;
 
@@ -210,7 +214,7 @@ impl OvhClient {
     pub async fn delete(
         &self,
         path: &str,
-    ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    ) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "DELETE", "").await?;
 
@@ -219,16 +223,20 @@ impl OvhClient {
     }
 
     /// Performs a POST request.
-    pub async fn post<T: Serialize + ?Sized>(
-        &self,
-        path: &str,
-        data: &T,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
-        let url = self.url(path);
-
+    pub async fn post<T: Serialize + ?Sized>(&self, path: &str, data: &T) -> Result<Response> {
         // Cannot call RequestBuilder.json directly because of body
         // signature requirement.
         let body = serde_json::to_string(data)?;
+        self.post_raw(path, body).await
+    }
+
+    /// Performs a POST request with an empty body.
+    pub async fn post_empty(&self, path: &str) -> Result<Response> {
+        self.post_raw(path, String::from("")).await
+    }
+
+    async fn post_raw(&self, path: &str, body: String) -> Result<Response> {
+        let url = self.url(path);
         let headers = self.gen_headers(&url, "POST", &body).await?;
 
         let resp = self
@@ -238,14 +246,12 @@ impl OvhClient {
             .body(body)
             .send()
             .await?;
+
         Ok(resp)
     }
 
     /// Performs a GET request without auth.
-    pub async fn get_noauth(
-        &self,
-        path: &str,
-    ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    pub async fn get_noauth(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.url(path);
         let headers = self.default_headers();
 

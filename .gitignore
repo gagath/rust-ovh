@@ -1,3 +1,4 @@
-/target
-Cargo.lock
-ovh.conf
+/.idea/
+/target/
+/Cargo.lock
+/ovh.conf

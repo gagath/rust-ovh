@@ -4,6 +4,7 @@ use core::fmt;
 use std::fmt::Display;
 
 use crate::client::OvhClient;
+use crate::client::Result;
 use reqwest::Response;
 
 use serde::{Deserialize, Serialize};
@@ -21,11 +22,7 @@ pub struct OvhMailRedir {
 
 impl OvhMailRedir {
     /// Retrieves an email redirection entry.
-    async fn get_redir(
-        client: &OvhClient,
-        domain: &str,
-        id: &str,
-    ) -> Result<OvhMailRedir, Box<dyn std::error::Error>> {
+    async fn get_redir(client: &OvhClient, domain: &str, id: &str) -> Result<OvhMailRedir> {
         let res = client
             .get(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await?
@@ -55,10 +52,7 @@ impl OvhMailRedir {
     ///     }
     /// }
     /// ```
-    pub async fn list(
-        client: &OvhClient,
-        domain: &str,
-    ) -> Result<Vec<OvhMailRedir>, Box<dyn std::error::Error>> {
+    pub async fn list(client: &OvhClient, domain: &str) -> Result<Vec<OvhMailRedir>> {
         let resp = client
             .get(&format!("/email/domain/{}/redirection", domain))
             .await?;
@@ -88,13 +82,7 @@ impl OvhMailRedir {
     ///         .unwrap();
     /// }
     /// ```
-    pub async fn create(
-        c: &OvhClient,
-        domain: &str,
-        from: &str,
-        to: &str,
-        local_copy: bool,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    pub async fn create(c: &OvhClient, domain: &str, from: &str, to: &str, local_copy: bool) -> Result<Response> {
         let data = OvhMailRedirCreate {
             from,
             to,
@@ -118,11 +106,7 @@ impl OvhMailRedir {
     ///         .unwrap();
     /// }
     /// ```
-    pub async fn delete(
-        c: &OvhClient,
-        domain: &str,
-        id: &str,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    pub async fn delete(c: &OvhClient, domain: &str, id: &str) -> Result<Response> {
         c.delete(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await
     }
