@@ -196,6 +196,10 @@ impl OvhClient {
         insert_sensitive_header(&mut headers, "X-Ovh-Timestamp", &timestamp);
         insert_sensitive_header(&mut headers, "X-Ovh-Signature", &signature);
 
+        if !body.is_empty() {
+            headers.insert("Content-Type", "application/json; charset=utf-8".parse().unwrap());
+        }
+
         Ok(headers)
     }
 
@@ -236,6 +240,29 @@ impl OvhClient {
         let resp = self
             .client
             .post(url)
+            .headers(headers)
+            .body(body)
+            .send()
+            .await.map_err(|e| OvhError::Reqwest)?;
+        Ok(resp)
+    }
+
+    /// Performs a PUT request.
+    pub async fn put<T: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        data: &T,
+    ) -> Result<Response, OvhError> {
+        let url = self.url(path);
+
+        // Cannot call RequestBuilder.json directly because of body
+        // signature requirement.
+        let body = serde_json::to_string(data).map_err(|e| OvhError::Serde)?;
+        let headers = self.gen_headers(&url, "PUT", &body).await?;
+
+        let resp = self
+            .client
+            .put(url)
             .headers(headers)
             .body(body)
             .send()
