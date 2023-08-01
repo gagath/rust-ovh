@@ -6,8 +6,8 @@ use std::fmt::Display;
 use crate::client::OvhClient;
 use reqwest::Response;
 
-use serde::{Deserialize, Serialize};
 use crate::error::OvhError;
+use serde::{Deserialize, Serialize};
 
 /// Structure representing a single email redirection.
 #[derive(Debug, Deserialize)]
@@ -31,7 +31,8 @@ impl OvhMailRedir {
             .get(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await?
             .json()
-            .await.map_err(|e| OvhError::Reqwest)?;
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(res)
     }
 
@@ -56,16 +57,16 @@ impl OvhMailRedir {
     ///     }
     /// }
     /// ```
-    pub async fn list(
-        client: &OvhClient,
-        domain: &str,
-    ) -> Result<Vec<OvhMailRedir>, OvhError> {
+    pub async fn list(client: &OvhClient, domain: &str) -> Result<Vec<OvhMailRedir>, OvhError> {
         let resp = client
             .get(&format!("/email/domain/{}/redirection", domain))
             .await?;
-        let resp = resp.error_for_status().map_err(|e| OvhError::Reqwest)?;
+        let resp = resp.error_for_status().map_err(OvhError::Reqwest)?;
 
-        let res = resp.json::<Vec<String>>().await.map_err(|e| OvhError::Reqwest)?;
+        let res = resp
+            .json::<Vec<String>>()
+            .await
+            .map_err(OvhError::Reqwest)?;
         let res: Vec<_> =
             futures::future::join_all(res.iter().map(|id| Self::get_redir(client, domain, id)))
                 .await;
@@ -119,11 +120,7 @@ impl OvhMailRedir {
     ///         .unwrap();
     /// }
     /// ```
-    pub async fn delete(
-        c: &OvhClient,
-        domain: &str,
-        id: &str,
-    ) -> Result<Response, OvhError> {
+    pub async fn delete(c: &OvhClient, domain: &str, id: &str) -> Result<Response, OvhError> {
         c.delete(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await
     }

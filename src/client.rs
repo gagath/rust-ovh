@@ -1,5 +1,6 @@
 //! Low-level access to the OVH API.
 
+use crate::error::OvhError;
 use configparser::ini::Ini;
 use reqwest::{header::HeaderMap, Response};
 use serde::Serialize;
@@ -8,7 +9,6 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
-use crate::error::OvhError;
 
 // Private data
 
@@ -113,17 +113,21 @@ impl OvhClient {
         T: AsRef<Path>,
     {
         let mut conf = Ini::new();
-        conf.load(path).map_err(|e| OvhError::Generic(e))?;
+        conf.load(path).map_err(OvhError::Generic)?;
 
         let endpoint = conf
             .get("default", "endpoint")
             .ok_or(OvhError::Generic("missing key `endpoint`".to_owned()))?;
         let application_key = conf
             .get(&endpoint, "application_key")
-            .ok_or(OvhError::Generic("missing key `application_key`".to_owned()))?;
-        let application_secret = conf
-            .get(&endpoint, "application_secret")
-            .ok_or(OvhError::Generic("missing key `application_secret`".to_owned()))?;
+            .ok_or(OvhError::Generic(
+                "missing key `application_key`".to_owned(),
+            ))?;
+        let application_secret =
+            conf.get(&endpoint, "application_secret")
+                .ok_or(OvhError::Generic(
+                    "missing key `application_secret`".to_owned(),
+                ))?;
         let consumer_key = conf
             .get(&endpoint, "consumer_key")
             .ok_or(OvhError::Generic("missing key `consumer_key`".to_owned()))?;
@@ -162,9 +166,18 @@ impl OvhClient {
     /// local time, and then subtract it from the local time of the machine.
     /// The result is a time delta value, is seconds.
     pub async fn time_delta(&self) -> Result<i64, OvhError> {
-        let server_time: u64 = self.get_noauth("/auth/time").await?.text().await.map_err(|e| OvhError::Reqwest)?.parse().map_err(|e| OvhError::ParseIntError)?;
+        let server_time: u64 = self
+            .get_noauth("/auth/time")
+            .await?
+            .text()
+            .await
+            .map_err(OvhError::Reqwest)?
+            .parse()
+            .map_err(OvhError::ParseIntError)?;
 
-        let delta = (now() - server_time).try_into().map_err(|e| OvhError::TryFromInt)?;
+        let delta = (now() - server_time)
+            .try_into()
+            .map_err(OvhError::TryFromInt)?;
         Ok(delta)
     }
 
@@ -186,7 +199,7 @@ impl OvhClient {
         let mut headers = self.default_headers();
 
         let time_delta = self.time_delta().await?;
-        let now: i64 = now().try_into().map_err(|e| OvhError::TryFromInt)?;
+        let now: i64 = now().try_into().map_err(OvhError::TryFromInt)?;
         let timestamp = now + time_delta;
         let timestamp = timestamp.to_string();
 
@@ -208,19 +221,28 @@ impl OvhClient {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "GET", "").await?;
 
-        let resp = self.client.get(url).headers(headers).send().await.map_err(|e| OvhError::Reqwest)?;
+        let resp = self
+            .client
+            .get(url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(resp)
     }
 
     /// Performs a DELETE request.
-    pub async fn delete(
-        &self,
-        path: &str,
-    ) -> Result<reqwest::Response, OvhError> {
+    pub async fn delete(&self, path: &str) -> Result<reqwest::Response, OvhError> {
         let url = self.url(path);
         let headers = self.gen_headers(&url, "DELETE", "").await?;
 
-        let resp = self.client.delete(url).headers(headers).send().await.map_err(|e| OvhError::Reqwest)?;
+        let resp = self
+            .client
+            .delete(url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(resp)
     }
 
@@ -234,7 +256,7 @@ impl OvhClient {
 
         // Cannot call RequestBuilder.json directly because of body
         // signature requirement.
-        let body = serde_json::to_string(data).map_err(|e| OvhError::Serde)?;
+        let body = serde_json::to_string(data).map_err(OvhError::Serde)?;
         let headers = self.gen_headers(&url, "POST", &body).await?;
 
         let resp = self
@@ -243,7 +265,8 @@ impl OvhClient {
             .headers(headers)
             .body(body)
             .send()
-            .await.map_err(|e| OvhError::Reqwest)?;
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(resp)
     }
 
@@ -271,14 +294,17 @@ impl OvhClient {
     }
 
     /// Performs a GET request without auth.
-    pub async fn get_noauth(
-        &self,
-        path: &str,
-    ) -> Result<reqwest::Response, OvhError> {
+    pub async fn get_noauth(&self, path: &str) -> Result<reqwest::Response, OvhError> {
         let url = self.url(path);
         let headers = self.default_headers();
 
-        let resp = self.client.get(url).headers(headers).send().await.map_err(|e| OvhError::Reqwest)?;
+        let resp = self
+            .client
+            .get(url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(resp)
     }
 }
