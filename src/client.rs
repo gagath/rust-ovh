@@ -280,7 +280,7 @@ impl OvhClient {
 
         // Cannot call RequestBuilder.json directly because of body
         // signature requirement.
-        let body = serde_json::to_string(data).map_err(|e| OvhError::Serde)?;
+        let body = serde_json::to_string(data).map_err(OvhError::Serde)?;
         let headers = self.gen_headers(&url, "PUT", &body).await?;
 
         let resp = self
@@ -289,7 +289,8 @@ impl OvhClient {
             .headers(headers)
             .body(body)
             .send()
-            .await.map_err(|e| OvhError::Reqwest)?;
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(resp)
     }
 
