@@ -6,6 +6,7 @@ use std::fmt::Display;
 use crate::client::OvhClient;
 use reqwest::Response;
 
+use crate::error::OvhError;
 use serde::{Deserialize, Serialize};
 
 /// Structure representing a single email redirection.
@@ -25,12 +26,13 @@ impl OvhMailRedir {
         client: &OvhClient,
         domain: &str,
         id: &str,
-    ) -> Result<OvhMailRedir, Box<dyn std::error::Error>> {
+    ) -> Result<OvhMailRedir, OvhError> {
         let res = client
             .get(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await?
             .json()
-            .await?;
+            .await
+            .map_err(OvhError::Reqwest)?;
         Ok(res)
     }
 
@@ -55,16 +57,16 @@ impl OvhMailRedir {
     ///     }
     /// }
     /// ```
-    pub async fn list(
-        client: &OvhClient,
-        domain: &str,
-    ) -> Result<Vec<OvhMailRedir>, Box<dyn std::error::Error>> {
+    pub async fn list(client: &OvhClient, domain: &str) -> Result<Vec<OvhMailRedir>, OvhError> {
         let resp = client
             .get(&format!("/email/domain/{}/redirection", domain))
             .await?;
-        let resp = resp.error_for_status()?;
+        let resp = resp.error_for_status().map_err(OvhError::Reqwest)?;
 
-        let res = resp.json::<Vec<String>>().await?;
+        let res = resp
+            .json::<Vec<String>>()
+            .await
+            .map_err(OvhError::Reqwest)?;
         let res: Vec<_> =
             futures::future::join_all(res.iter().map(|id| Self::get_redir(client, domain, id)))
                 .await;
@@ -94,7 +96,7 @@ impl OvhMailRedir {
         from: &str,
         to: &str,
         local_copy: bool,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    ) -> Result<Response, OvhError> {
         let data = OvhMailRedirCreate {
             from,
             to,
@@ -118,11 +120,7 @@ impl OvhMailRedir {
     ///         .unwrap();
     /// }
     /// ```
-    pub async fn delete(
-        c: &OvhClient,
-        domain: &str,
-        id: &str,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    pub async fn delete(c: &OvhClient, domain: &str, id: &str) -> Result<Response, OvhError> {
         c.delete(&format!("/email/domain/{}/redirection/{}", domain, id))
             .await
     }
